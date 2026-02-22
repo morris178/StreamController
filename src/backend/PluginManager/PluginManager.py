@@ -114,11 +114,6 @@ class PluginManager:
             else:
                 self.loaded_plugin_ids.add(folder)
 
-        # In daemon-only mode the deferred services (asset manager, store, etc.)
-        # are intentionally skipped at startup.  Plugins may access them during
-        # __init__, so ensure they exist before instantiating any plugin class.
-        self._ensure_deferred_services_for_daemon_plugin_load()
-
         # Get all classes inheriting from PluginBase and generate objects for them
         self.init_plugins()
 
