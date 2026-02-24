@@ -20,6 +20,7 @@ import gi
 from GtkHelper.GtkHelper import BetterPreferencesGroup
 from autostart import is_flatpak, setup_autostart
 from src.backend.DeckManagement.HelperMethods import color_values_to_gdk, gdk_color_to_values, get_pango_font_description, get_values_from_pango_font_description
+from src.backend.DeckManagement.ImageHelpers import invalidate_native_jpeg_quality_override_cache
 from src.windows.Settings.PluginSettingsPage import PluginSettingsPage
 
 # Import globals first to get IS_MAC
@@ -654,16 +655,30 @@ class PerformancePageGroup(Adw.PreferencesGroup):
                                           tooltip_text=gl.lm.get("settings.performance.cache-videos.tooltip"))
         self.add(self.cache_videos)
 
+        self.native_jpeg_quality_row = Adw.ActionRow(
+            title="Native JPEG Quality",
+            subtitle="Lower values reduce USB payload size and can improve video smoothness (100 disables override)"
+        )
+        self.native_jpeg_quality_scale = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 1, 100, 1)
+        self.native_jpeg_quality_scale.set_digits(0)
+        self.native_jpeg_quality_scale.set_draw_value(True)
+        self.native_jpeg_quality_scale.set_valign(Gtk.Align.CENTER)
+        self.native_jpeg_quality_scale.set_size_request(220, -1)
+        self.native_jpeg_quality_row.add_suffix(self.native_jpeg_quality_scale)
+        self.add(self.native_jpeg_quality_row)
+
         self.load_defaults()
 
         # Connect signals
         self.n_cached_pages.connect("changed", self.on_n_cached_pages_changed)
         self.cache_videos.connect("notify::active", self.on_cache_videos_toggled)
+        self.native_jpeg_quality_scale.connect("value-changed", self.on_native_jpeg_quality_changed)
 
     def load_defaults(self):
         settings = self.settings.settings_json
         self.n_cached_pages.set_value(settings.get("performance", {}).get("n-cached-pages", 3))
         self.cache_videos.set_active(settings.get("performance", {}).get("cache-videos", True))
+        self.native_jpeg_quality_scale.set_value(settings.get("performance", {}).get("native-jpeg-quality", 70))
 
     def on_n_cached_pages_changed(self, *args):
         self.settings.settings_json.setdefault("performance", {})
@@ -681,6 +696,12 @@ class PerformancePageGroup(Adw.PreferencesGroup):
 
         # Save
         self.settings.save_json()
+
+    def on_native_jpeg_quality_changed(self, *args):
+        self.settings.settings_json.setdefault("performance", {})
+        self.settings.settings_json["performance"]["native-jpeg-quality"] = int(round(self.native_jpeg_quality_scale.get_value()))
+        self.settings.save_json()
+        invalidate_native_jpeg_quality_override_cache()
 
 
 class SystemPage(Adw.PreferencesPage):

@@ -307,13 +307,16 @@ class MediaPlayerThread(threading.Thread):
 
         for key in list(self.image_tasks.keys()):
             try:
-                self.image_tasks[key].run()
+                task = self.image_tasks[key]
+                if task.page is self.deck_controller.active_page:
+                    task.run()
                 del self.image_tasks[key]
             except KeyError:
                 pass
 
         if self.touchscreen_task is not None:
-            self.touchscreen_task.run()
+            if self.touchscreen_task.page is self.deck_controller.active_page:
+                self.touchscreen_task.run()
             del self.touchscreen_task
             self.touchscreen_task = None
 
@@ -645,6 +648,13 @@ class DeckController:
             int(config.get("fps", 30)),
         )
         if not force_reload and background_signature == self._last_background_signature:
+            # The media config did not change, but on page switches we may still be
+            # reusing the same BackgroundVideo object. Rebind it to the new active
+            # page so the video playback fast path remains active on the target page.
+            if self.background.video is not None:
+                self.background.video.page = page
+                self.background.video.fps = int(config.get("fps", 30))
+                self.background.video.loop = bool(config.get("loop", False))
             log.debug(f"[page-switch-phase] deck={self.safe_serial_number()} phase=background skip=unchanged")
             return
         self._last_background_signature = background_signature
@@ -948,14 +958,14 @@ class DeckController:
         if not self.is_visual():
             return
         alpha_image = self.generate_alpha_key()
-        native_image = PILHelper.to_native_key_format(self.deck, alpha_image.convert("RGB"))
+        native_image = to_native_key_format(self.deck, alpha_image.convert("RGB"))
         for i in range(self.deck.key_count()):
             self.deck.set_key_image(i, native_image)
 
         if self.deck.is_touch():
             touchscreen_size = self.get_touchscreen_image_size()
             empty = Image.new("RGB", touchscreen_size, (0, 0, 0))
-            native_image = PILHelper.to_native_touchscreen_format(self.deck, empty)
+            native_image = to_native_touchscreen_format(self.deck, empty)
 
             self.deck.set_touchscreen_image(native_image, x_pos=0, y_pos=0, width=touchscreen_size[0], height=touchscreen_size[1])
 
@@ -2173,7 +2183,7 @@ class ControllerKey(ControllerInput):
             rgb_image = image.convert("RGB").rotate(self.deck_controller.deck.get_rotation())
 
         if self.deck_controller.is_visual():
-            native_image = PILHelper.to_native_key_format(self.deck_controller.deck, rgb_image)
+            native_image = to_native_key_format(self.deck_controller.deck, rgb_image)
             rgb_image.close()
             self.deck_controller.media_player.add_image_task(self.index, native_image)
 
@@ -2500,7 +2510,7 @@ class ControllerTouchScreen(ControllerInput):
             background.paste(image, (0, 0), image)
             image = background
         
-        native_image = PILHelper.to_native_touchscreen_format(self.deck_controller.deck, image)
+        native_image = to_native_touchscreen_format(self.deck_controller.deck, image)
         self.deck_controller.media_player.add_touchscreen_task(native_image)
 
         self.set_ui_image(self.get_current_image())
